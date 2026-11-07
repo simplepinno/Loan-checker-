@@ -1,30 +1,36 @@
-# Loan Leverage Planner — local SQLite version
+# Loan Leverage Planner — local app
 
-This adds a small local server and SQLite database to the existing single-file planner. It keeps the current planner UI and tracker, while storing settings and tracker history on your computer. The tracker entries are the app's dated records of market value, cost basis, cash, and installments paid.
+The project is separated into a browser frontend, a local HTTP backend, and a SQLite data layer:
 
-## Run it
+- `Loan Leverage Planner.html` — existing planner UI and calculations
+- `local-app.js` — history table, CSV export, notification panel, and frontend/API connection
+- `server.py` — local web server and JSON API
+- `database.py` — SQLite schema, persistence, audit log, and alert calculations
+- `data/loan_planner.sqlite3` — created automatically when the server starts; your local data
 
-1. Install Python 3.9 or newer (no third-party packages are needed).
-2. Put `server.py`, `local-app.js`, and `Loan Leverage Planner.html` in the same folder (or clone/download this repository).
-3. Open a terminal in that folder and run:
+## Run locally
 
-   ```bash
-   python server.py
-   ```
+Requires Python 3.9+; no extra packages are required.
 
-   On some systems, use `python3 server.py` or `py server.py`.
-4. Open <http://127.0.0.1:8000/> in your browser. Keep the terminal/server running while using the app.
+1. Open a terminal in the project folder.
+2. Start the server with `python server.py` (or `python3 server.py` / `py server.py`).
+3. Open <http://127.0.0.1:8000/> in your browser. Keep the server running while using the app.
 
-The SQLite file `loan_planner.sqlite3` is created in the same folder. It contains current settings, dated tracker history, a change log, and notification state. Use the existing **Tracker** tab to add and review past dated entries; the existing **Remove** action removes an entry from active history but its prior version remains in the change log.
+The server binds to this computer only. The SQLite database is created in `data/` and is not committed to the repository.
 
-## In-app notifications
+## History view
 
-The notification panel appears above the planner tabs. It checks for loan installments due within three days or overdue, loan maturity, and the watch/stop thresholds based on the latest tracker entry. Notifications refresh while the app is open and can be dismissed. This is intentionally in-app only: it does not notify you while the app/browser is closed, and it is not a substitute for checking your lender's actual due dates or account.
+Use **Tracker → History** to see saved daily tracker snapshots in a sortable-by-date (newest first) table. It displays date, market value, cost basis, cash, installments paid, price return, an estimated result, and status. Search filters the records, and **Export CSV** downloads the matching rows. The app records the dated values you enter; it is not connected to a broker and does not import or verify executed orders. The estimated result uses the current plan assumptions and is for tracking only.
 
-## Data and privacy
+The existing Tracker form is where you add new dated records. Remove requires a second click for confirmation. Removed entries leave the active history; their previous content is retained in the SQLite change log.
 
-- The server binds to `127.0.0.1` only; it is not exposed to your network by default.
-- The database is local to this computer and is not encrypted. Protect the file and make backups if you need them.
-- Copy `loan_planner.sqlite3` (and its `-wal`/`-shm` files, if present, after stopping the server) to back up your data.
-- Data previously stored by a `file://` copy of the HTML is isolated by the browser from `http://127.0.0.1`; it will not automatically migrate. The first run starts with the planner's defaults unless there is already local browser state for the server origin.
-- Google Fonts remain an optional internet resource; the planner's fallback fonts work without them.
+## Notifications
+
+The in-app panel checks for scheduled installments due within three days or overdue, loan maturity, and watch/stop thresholds based on the latest saved tracker record. It refreshes while the app is open. It cannot alert you while the app/browser is closed, and it is not a substitute for lender due-date information.
+
+## Data, backup, and privacy
+
+- Data stays on this computer and is stored in `data/loan_planner.sqlite3`; it is not encrypted.
+- Back up the database file after stopping the server. Keep backups private.
+- A standalone `file://` copy has separate browser storage; its old data will not automatically migrate to the local server.
+- Google Fonts are optional; fallback fonts work when offline.
