@@ -1,0 +1,717 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Loan Leverage Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow column, sticky tab bar, verdict first, then inputs, then a ledger of results. */
+:root {
+  --bg: #F2F5F3;
+  --surface: #FFFFFF;
+  --field: #E9EFEC;
+  --fg: #13211E;
+  --muted: #55675F;
+  --line: #D3DDD8;
+  --accent: #0E6B5B;
+  --accent-fg: #FFFFFF;
+  --good: #17703F;
+  --good-bg: #DCF0E4;
+  --warn: #7E5200;
+  --warn-bg: #FAEAC6;
+  --bad: #A3231B;
+  --bad-bg: #F8DAD6;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-label: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1614; --surface: #16211E; --field: #1D2B27; --fg: #E4EDEA; --muted: #93A8A1; --line: #2A3B37;
+    --accent: #58C4AD; --accent-fg: #06201A; --good: #6FD39B; --good-bg: #16342A; --warn: #E8B64A; --warn-bg: #3A2E10;
+    --bad: #F08A80; --bad-bg: #3C1B18; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1614; --surface: #16211E; --field: #1D2B27; --fg: #E4EDEA; --muted: #93A8A1; --line: #2A3B37;
+  --accent: #58C4AD; --accent-fg: #06201A; --good: #6FD39B; --good-bg: #16342A; --warn: #E8B64A; --warn-bg: #3A2E10;
+  --bad: #F08A80; --bad-bg: #3C1B18; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 18px 56px;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1 { font-family: var(--font-label); font-weight: 600; font-size: 26px; line-height: 1.1; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 52ch; }
+h2 { font-family: var(--font-label); font-weight: 600; font-size: 13px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+
+nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 11; background: var(--bg); padding: 6px 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; border-bottom: 1px solid var(--line); }
+nav button { font: inherit; font-family: var(--font-label); font-weight: 500; font-size: 15px; background: transparent; color: var(--muted); border: 0; border-radius: 6px; padding: 9px 4px; cursor: pointer; }
+nav button[aria-current="page"] { background: var(--accent); color: var(--accent-fg); }
+nav button:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.verdict { padding: 16px; border-radius: 8px; display: flex; flex-direction: column; gap: 6px; }
+.verdict .tag { font-family: var(--font-label); font-weight: 600; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+.verdict .head { font-family: var(--font-label); font-weight: 600; font-size: 22px; line-height: 1.15; text-wrap: balance; }
+.verdict p { margin: 0; }
+.v-good { background: var(--good-bg); color: var(--good); }
+.v-warn { background: var(--warn-bg); color: var(--warn); }
+.v-bad { background: var(--bad-bg); color: var(--bad); }
+
+.group { display: flex; flex-direction: column; gap: 10px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 13px; color: var(--muted); }
+.inwrap { position: relative; }
+.inwrap input { width: 100%; }
+.inwrap .suf { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); font-family: var(--font-num); pointer-events: none; }
+input[type="number"], input[type="date"] { font: inherit; font-family: var(--font-num); font-size: 16px; color: var(--fg); background: var(--field); border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; min-width: 0; }
+input.pct { padding-right: 26px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--field); border: 1px solid var(--line); border-radius: 6px; padding: 3px; }
+.seg button { font: inherit; font-family: var(--font-num); font-size: 14px; background: transparent; color: var(--fg); border: 0; border-radius: 4px; padding: 7px 4px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.hint { font-size: 13px; color: var(--muted); margin: 0; }
+
+.split { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--field); }
+.split .inv { background: var(--accent); }
+.split .buf { background: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
+
+.ledger { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.row .k { min-width: 0; }
+.row .k small { display: block; color: var(--muted); font-size: 12.5px; }
+.row .v { font-family: var(--font-num); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; font-weight: 500; }
+.pos { color: var(--good); } .neg { color: var(--bad); } .amb { color: var(--warn); }
+.pill { display: inline-block; font-family: var(--font-label); font-weight: 600; font-size: 12.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 9px; border-radius: 99px; }
+.p-good { background: var(--good-bg); color: var(--good); }
+.p-warn { background: var(--warn-bg); color: var(--warn); }
+.p-bad { background: var(--bad-bg); color: var(--bad); }
+
+.sched { display: flex; flex-direction: column; gap: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-family: var(--font-num); font-size: 13px; background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 99px; padding: 5px 11px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.bigval { font-family: var(--font-num); font-size: 30px; font-weight: 500; }
+.slider-head { display: flex; justify-content: space-between; align-items: baseline; }
+
+svg.chart { width: 100%; height: auto; display: block; }
+svg.chart text { font-family: var(--font-num); font-size: 10px; fill: var(--muted); }
+.c-line { fill: none; stroke: var(--fg); stroke-width: 1.8; }
+.c-zero { stroke: var(--muted); stroke-width: 1; }
+.c-grid { stroke: var(--line); stroke-width: 1; }
+.c-up { fill: var(--good-bg); } .c-down { fill: var(--bad-bg); }
+.m-stop { stroke: var(--bad); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.m-be { stroke: var(--good); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.m-now { stroke: var(--accent); stroke-width: 1.6; }
+.t-stop { fill: var(--bad) !important; } .t-be { fill: var(--good) !important; }
+.c-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
+
+.scroller { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 13.5px; }
+th { font-family: var(--font-label); font-weight: 600; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); text-align: right; padding: 8px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+td { text-align: right; padding: 8px 8px; border-bottom: 1px solid var(--line); font-family: var(--font-num); font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.hl td { background: var(--field); }
+
+.btn { font: inherit; font-family: var(--font-label); font-weight: 600; font-size: 16px; background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 6px; padding: 11px 16px; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+.btn.small { font-size: 13px; padding: 5px 10px; }
+.entries { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.entry { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.entry .meta { color: var(--muted); font-size: 13px; }
+.empty { background: var(--field); border-radius: 8px; padding: 14px; color: var(--muted); }
+.foot { font-size: 12.5px; color: var(--muted); }
+.note { background: var(--field); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Loan Leverage Planner</h1>
+    <p class="sub">Borrow to invest: what it costs, how much to keep as cash, and when to get out. Figures start as an example from your first sketch. Replace them with your own.</p>
+  </header>
+
+  <nav aria-label="Sections">
+    <button type="button" data-tab="plan">Plan</button>
+    <button type="button" data-tab="price-test">Price test</button>
+    <button type="button" data-tab="tracker">Tracker</button>
+    <button type="button" data-tab="compare">Compare</button>
+  </nav>
+
+  <!-- PLAN -->
+  <section id="tab-plan" class="wrap" style="gap:20px">
+    <div id="verdict"></div>
+
+    <div class="group">
+      <h2>Loan</h2>
+      <div class="fields">
+        <div class="field"><label for="f-loan">Loan amount</label><input id="f-loan" type="number" inputmode="decimal" min="0" step="1000"></div>
+        <div class="field"><label for="f-rate">Flat rate for the whole term</label><div class="inwrap"><input id="f-rate" class="pct" type="number" inputmode="decimal" min="0" step="0.5"><span class="suf">%</span></div></div>
+        <div class="field"><label id="lbl-term">Term</label>
+          <div class="seg" role="group" aria-labelledby="lbl-term">
+            <button type="button" id="term-1" data-months="1">1 month</button>
+            <button type="button" id="term-2" data-months="2">2 months</button>
+            <button type="button" id="term-3" data-months="3">3 months</button>
+          </div>
+        </div>
+        <div class="field"><label for="f-start">Start date</label><input id="f-start" type="date"></div>
+      </div>
+      <p class="hint">Early repayment saves no interest, so the full amount is owed whenever you repay. Installments are equal, one every 30 days.</p>
+    </div>
+
+    <div class="group">
+      <h2>Your money</h2>
+      <div class="fields">
+        <div class="field"><label for="f-own">Own cash put in</label><input id="f-own" type="number" inputmode="decimal" min="0" step="1000"></div>
+        <div class="field"><label for="f-buf">Kept as cash buffer</label><div class="inwrap"><input id="f-buf" class="pct" type="number" inputmode="decimal" min="0" max="100" step="1"><span class="suf">%</span></div></div>
+      </div>
+      <p class="hint">The buffer is a share of loan plus own cash. It is never invested.</p>
+    </div>
+
+    <div class="group">
+      <h2>Fees</h2>
+      <div class="fields">
+        <div class="field"><label for="f-buyfee">Buy fee</label><div class="inwrap"><input id="f-buyfee" class="pct" type="number" inputmode="decimal" min="0" step="0.5"><span class="suf">%</span></div></div>
+        <div class="field"><label for="f-sellfee">Sell fee</label><div class="inwrap"><input id="f-sellfee" class="pct" type="number" inputmode="decimal" min="0" step="0.5"><span class="suf">%</span></div></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Exit rules</h2>
+      <div class="fields">
+        <div class="field"><label for="f-watch">Watch after a fall of</label><div class="inwrap"><input id="f-watch" class="pct" type="number" inputmode="decimal" min="0" step="1"><span class="suf">%</span></div></div>
+        <div class="field"><label for="f-stop">Stop-loss at a fall of</label><div class="inwrap"><input id="f-stop" class="pct" type="number" inputmode="decimal" min="0" step="1"><span class="suf">%</span></div></div>
+        <div class="field"><label for="f-stress">Stress fall (stop fails)</label><div class="inwrap"><input id="f-stress" class="pct" type="number" inputmode="decimal" min="0" step="1"><span class="suf">%</span></div></div>
+        <div class="field"><label for="f-maxloss">Most you can afford to lose</label><input id="f-maxloss" type="number" inputmode="decimal" min="0" step="1000"></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Your expectation</h2>
+      <div class="fields">
+        <div class="field"><label for="f-expect">Expected price rise over the term</label><div class="inwrap"><input id="f-expect" class="pct" type="number" inputmode="decimal" step="1"><span class="suf">%</span></div></div>
+        <div class="field"><label for="f-haircut">Haircut on your optimism</label><div class="inwrap"><input id="f-haircut" class="pct" type="number" inputmode="decimal" min="0" max="100" step="5"><span class="suf">%</span></div></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Where the money goes</h2>
+      <div id="split"></div>
+    </div>
+
+    <div class="group">
+      <h2>Key numbers</h2>
+      <div id="ledger" class="ledger"></div>
+    </div>
+
+    <div class="group">
+      <h2>Installments</h2>
+      <div id="sched" class="sched"></div>
+    </div>
+
+    <div><button type="button" class="btn ghost" id="reset">Reset to example values</button></div>
+  </section>
+
+  <!-- PRICE TEST -->
+  <section id="tab-price-test" class="wrap" style="gap:20px" hidden>
+    <div class="group">
+      <h2>If the price moves</h2>
+      <div class="slider-head"><span class="bigval" id="m-big">0%</span><span id="m-pill"></span></div>
+      <input id="m-slider" type="range" min="-50" max="80" step="1" value="0" aria-label="Price change from entry in percent">
+      <div class="chips" id="m-chips"></div>
+    </div>
+    <div class="group">
+      <h2>Result at maturity</h2>
+      <div id="m-ledger" class="ledger"></div>
+    </div>
+    <div class="group">
+      <h2>Profit and loss across prices</h2>
+      <div id="m-chart"></div>
+    </div>
+  </section>
+
+  <!-- TRACKER -->
+  <section id="tab-tracker" class="wrap" style="gap:20px" hidden>
+    <div class="group">
+      <h2>Where you stand</h2>
+      <div id="t-status"></div>
+    </div>
+    <div class="group">
+      <h2>Log today</h2>
+      <div class="fields">
+        <div class="field"><label for="t-date">Date</label><input id="t-date" type="date"></div>
+        <div class="field"><label for="t-value">Market value of what you hold</label><input id="t-value" type="number" inputmode="decimal" step="100"></div>
+        <div class="field"><label for="t-basis">Cost basis of what you hold</label><input id="t-basis" type="number" inputmode="decimal" step="100"></div>
+        <div class="field"><label for="t-cash">Cash held</label><input id="t-cash" type="number" inputmode="decimal" step="100"></div>
+        <div class="field"><label for="t-paid">Installments paid so far</label><input id="t-paid" type="number" inputmode="numeric" min="0" max="3" step="1"></div>
+      </div>
+      <p class="hint">If you sell part of the position, lower the cost basis by the same share you sold. Fields start from your last entry.</p>
+      <div><button type="button" class="btn" id="t-add">Log entry</button></div>
+    </div>
+    <div class="group">
+      <h2>History</h2>
+      <div id="t-list"></div>
+    </div>
+  </section>
+
+  <!-- COMPARE -->
+  <section id="tab-compare" class="wrap" style="gap:20px" hidden>
+    <div class="group">
+      <h2>1, 2 or 3 months</h2>
+      <p class="hint">The same rate from the Plan tab is applied to every term. The break-even price rise does not change with the term, but a longer term gives the price more days to get there.</p>
+      <div class="scroller" id="c-terms"></div>
+    </div>
+    <div class="group">
+      <h2>How much own cash</h2>
+      <p class="hint">Own cash is invested alongside the loan with the same buffer share. The highlighted row is the amount on the Plan tab.</p>
+      <div class="scroller" id="c-own"></div>
+    </div>
+  </section>
+
+  <p class="foot" id="storage"></p>
+</div>
+
+<script>
+/*CORE-START*/
+var DEFAULTS = { loan: 70000, rate: 16, months: 2, start: '2026-11-06', own: 20000, bufPct: 30, buyFee: 4, sellFee: 4,
+  watch: 10, stop: 20, stress: 30, maxLoss: 25000, expect: 25, haircut: 30 };
+
+function plan(p) {
+  var L = p.loan, i = p.rate / 100, n = p.months;
+  var bf = p.buyFee / 100, sf = p.sellFee / 100, k = (1 - bf) * (1 - sf);
+  var O = p.own, b = p.bufPct / 100;
+  var interest = L * i, owed = L + interest, inst = owed / n;
+  var T = L + O, B = T * b, spend = T - B, basis = spend * (1 - bf);
+  var watch = p.watch / 100, stop = p.stop / 100, stress = p.stress / 100;
+  var re = (p.expect / 100) * (1 - p.haircut / 100);
+  var plAt = function (m) { return B + basis * (1 + m) * (1 - sf) - owed - O; };
+  var be = basis > 0 ? (owed + O - B) / ((1 - sf) * basis) - 1 : NaN;
+  var hurdle = (1 + i - b) / ((1 - b) * k) - 1;
+  var aS = b + (1 - b) * k * (1 - stress);
+  var Lmax = Math.max((p.maxLoss - O * (1 - aS)) / (1 + i - aS), 0);
+  var gain = b + (1 - b) * k * (1 + re) - 1 - i;
+  var plStop = plAt(-stop), plStress = plAt(-stress), plWatch = plAt(-watch);
+  return {
+    L: L, i: i, n: n, sf: sf, bf: bf, k: k, O: O, b: b, interest: interest, owed: owed, inst: inst, T: T, B: B, spend: spend,
+    basis: basis, watch: watch, stop: stop, stress: stress, re: re, plAt: plAt, be: be, hurdle: hurdle, aS: aS, Lmax: Lmax,
+    gain: gain, recLoan: gain > 0 ? Lmax : 0, plStop: plStop, plStress: plStress, plWatch: plWatch,
+    leftOwing: Math.max(-plStop - O, 0), ownLost: O > 0 ? Math.min(-plStop / O, 1) : null,
+    expPL: plAt(re), expOwnOnly: O * (b + (1 - b) * k * (1 + re) - 1),
+    feeFloor: 1 / k - 1, rawNeeded: p.haircut < 100 ? hurdle / (1 - p.haircut / 100) : Infinity,
+    firstSale: Math.max(inst - B, 0) / (1 - sf), cover: B / inst, day1PL: plAt(0)
+  };
+}
+
+function dayNum(s) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+  if (!m) return NaN;
+  return Math.floor(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000);
+}
+
+function entryCalc(e, P, p) {
+  var days = p.months * 30;
+  var el = Math.min(Math.max(dayNum(e.date) - dayNum(p.start), 0), days);
+  if (isNaN(el)) el = 0;
+  var paid = e.paid || 0;
+  var owedRem = P.owed - paid * P.inst;
+  var net = e.value * (1 - P.sf);
+  var equity = e.cash + net - owedRem;
+  var pl = equity - P.O;
+  var ret = e.basis > 0 ? e.value / e.basis - 1 : NaN;
+  var needed = e.value > 0 ? (owedRem + P.O - e.cash) / (1 - P.sf) / e.value - 1 : NaN;
+  var done = paid >= p.months;
+  var nextInst = done ? 0 : P.inst;
+  var dueIn = done ? null : (paid + 1) * 30 - el;
+  var sale = Math.max(nextInst - e.cash, 0) / (1 - P.sf);
+  var shortfall = Math.max(owedRem - e.cash - net, 0);
+  var st;
+  if (el >= days) st = 'DUE';
+  else if (pl >= 0) st = 'PROFIT';
+  else if (!isNaN(ret) && ret <= -P.stop) st = 'EXIT';
+  else if (!isNaN(ret) && ret <= -P.watch) st = 'WATCH';
+  else st = 'HOLD';
+  return { el: el, left: days - el, owedRem: owedRem, net: net, equity: equity, pl: pl, ret: ret, needed: needed,
+    nextInst: nextInst, dueIn: dueIn, sale: sale, shortfall: shortfall, status: st };
+}
+
+function ownRow(pct, p) {
+  var L = p.loan, i = p.rate / 100, bf = p.buyFee / 100, sf = p.sellFee / 100;
+  var O = pct * L, T = L + O, B = T * p.bufPct / 100, spend = T - B, basis = spend * (1 - bf), owed = L * (1 + i);
+  var pl = function (m) { return B + basis * (1 + m) * (1 - sf) - owed - O; };
+  var ps = pl(-p.stop / 100);
+  return { O: O, T: T, B: B, spend: spend, be: (owed + O - B) / ((1 - sf) * basis) - 1, plStop: ps,
+    plStress: pl(-p.stress / 100), left: Math.max(-ps - O, 0), lost: O > 0 ? Math.min(-ps / O, 1) : null,
+    cover: B / (owed / p.months) };
+}
+
+function termRow(n, p) {
+  var L = p.loan, i = p.rate / 100, sf = p.sellFee / 100, bf = p.buyFee / 100;
+  var O = p.own, T = L + O, B = T * p.bufPct / 100, basis = (T - B) * (1 - bf), owed = L * (1 + i), inst = owed / n;
+  var pl = function (m) { return B + basis * (1 + m) * (1 - sf) - owed - O; };
+  var be = (owed + O - B) / ((1 - sf) * basis) - 1;
+  return { n: n, inst: inst, firstPct: inst / L, cover: B / inst, sale: Math.max(inst - B, 0) / (1 - sf),
+    perMonth: p.rate / 100 / n, be: be, bePerMonth: be / n, plStop: pl(-p.stop / 100) };
+}
+/*CORE-END*/
+
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY = 'loan-leverage-planner-v1';
+  var params = Object.assign({}, DEFAULTS);
+  var entries = [];
+  var dbRef = null;
+  var tab = 'plan';
+  var mv = 0;
+
+  function today() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + dd;
+  }
+  function neg(n) { return n < 0; }
+  function money(n) {
+    if (!isFinite(n)) return '–';
+    var r = Math.round(Math.abs(n)).toLocaleString('en-US');
+    return (n < -0.5 ? '−' : '') + r;
+  }
+  function pct(n, d) {
+    if (!isFinite(n)) return '–';
+    var s = (Math.abs(n) * 100).toFixed(d == null ? 1 : d) + '%';
+    return (n < 0 && Math.abs(n) * 100 >= 0.05 ? '−' : '') + s;
+  }
+  function spct(n, d) {
+    if (!isFinite(n)) return '–';
+    var s = pct(n, d);
+    return (n > 0 && s[0] !== '−' ? '+' : '') + s;
+  }
+  function cls(n) { return n > 0.5 ? 'pos' : (n < -0.5 ? 'neg' : ''); }
+  function row(k, v, c, small) {
+    return '<div class="row"><div class="k">' + k + (small ? '<small>' + small + '</small>' : '') + '</div><div class="v ' + (c || '') + '">' + v + '</div></div>';
+  }
+  function statusPill(st) {
+    var map = { HOLD: ['p-good', 'Hold'], PROFIT: ['p-good', 'Profit zone'], WATCH: ['p-warn', 'Watch'], EXIT: ['p-bad', 'Exit: stop-loss'], DUE: ['p-bad', 'Due: repay now'] };
+    var m = map[st];
+    return '<span class="pill ' + m[0] + '">' + m[1] + '</span>';
+  }
+
+  /* ---------- storage ---------- */
+  function lsGet() { try { var r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
+  function lsSet() { try { localStorage.setItem(KEY, JSON.stringify({ params: params, entries: dbRef ? [] : entries })); } catch (e) {} }
+  var saveTimer = null, saving = false, dirty = false;
+  function pushSettings() {
+    if (!dbRef) return;
+    if (saving) { dirty = true; return; }
+    saving = true; dirty = false;
+    dbRef.doc('app/settings').set(JSON.parse(JSON.stringify(params))).catch(function () {}).then(function () {
+      saving = false;
+      if (dirty) pushSettings();
+    });
+  }
+  function saveSettings() {
+    lsSet();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(pushSettings, 600);
+  }
+
+  /* ---------- inputs ---------- */
+  var FIELDS = [['f-loan', 'loan'], ['f-rate', 'rate'], ['f-start', 'start', 'text'], ['f-own', 'own'], ['f-buf', 'bufPct'],
+    ['f-buyfee', 'buyFee'], ['f-sellfee', 'sellFee'], ['f-watch', 'watch'], ['f-stop', 'stop'], ['f-stress', 'stress'],
+    ['f-maxloss', 'maxLoss'], ['f-expect', 'expect'], ['f-haircut', 'haircut']];
+  function syncInputs() {
+    FIELDS.forEach(function (f) {
+      var el = $(f[0]);
+      if (document.activeElement !== el) el.value = params[f[1]];
+    });
+    [1, 2, 3].forEach(function (m) { $('term-' + m).setAttribute('aria-pressed', String(params.months === m)); });
+  }
+  FIELDS.forEach(function (f) {
+    $(f[0]).addEventListener('input', function () {
+      if (f[2] === 'text') { if (/^\d{4}-\d{2}-\d{2}$/.test(this.value)) params[f[1]] = this.value; }
+      else { var v = parseFloat(this.value); params[f[1]] = isFinite(v) ? v : 0; }
+      saveSettings(); renderAll();
+    });
+  });
+  [1, 2, 3].forEach(function (m) {
+    $('term-' + m).addEventListener('click', function () { params.months = m; syncInputs(); saveSettings(); renderAll(); });
+  });
+  $('reset').addEventListener('click', function () { params = Object.assign({}, DEFAULTS); syncInputs(); saveSettings(); renderAll(); });
+
+  /* ---------- plan ---------- */
+  function renderPlan() {
+    var P = plan(params);
+    var good = P.re > P.hurdle;
+    var over = P.plStress < -params.maxLoss;
+    var cls2 = 'v-bad', tag = 'Verdict', head = '';
+    if (good && !over) { cls2 = 'v-good'; head = 'Borrowing adds expected value'; }
+    else if (good && over) { cls2 = 'v-warn'; head = 'Borrowing could pay, but the plan is too big'; }
+    else { cls2 = 'v-bad'; head = 'Do not borrow at this conviction'; }
+    var line1 = 'After your haircut you expect ' + spct(P.re) + '. Each borrowed unit needs ' + spct(P.hurdle) + ' to pay for itself.';
+    var line2 = 'Recommended loan: <b class="num">' + money(P.recLoan) + '</b>. Your plan: <b class="num">' + money(P.L) + '</b>.';
+    if (over) line2 += ' A stress fall would lose ' + money(-P.plStress) + ', which is ' + money(-P.plStress - params.maxLoss) + ' over your limit.';
+    $('verdict').innerHTML = '<div class="verdict ' + cls2 + '"><span class="tag">' + tag + '</span><span class="head">' + head + '</span><p>' + line1 + '</p><p>' + line2 + '</p></div>';
+
+    var invPct = P.T > 0 ? P.spend / P.T : 0;
+    $('split').innerHTML = '<div class="split" role="img" aria-label="Invested ' + pct(invPct, 0) + ', buffer ' + pct(1 - invPct, 0) + '"><div class="inv" style="width:' + (invPct * 100) + '%"></div><div class="buf" style="width:' + ((1 - invPct) * 100) + '%"></div></div>' +
+      '<div class="legend"><span><i class="dot" style="background:var(--accent)"></i>Invested <span class="num">' + money(P.spend) + '</span> (' + pct(invPct, 0) + ')</span>' +
+      '<span><i class="dot" style="background:var(--muted)"></i>Buffer <span class="num">' + money(P.B) + '</span> (' + pct(1 - invPct, 0) + ')</span></div>' +
+      '<p class="hint" style="margin-top:8px">Loan ' + money(P.L) + ' plus own cash ' + money(P.O) + ' (' + pct(P.L > 0 ? P.O / P.L : 0, 0) + ' of the loan). After the buy fee, the holding starts at ' + money(P.basis) + '.</p>';
+
+    var ls = '';
+    ls += row('Owed in total', money(P.owed), '', 'Loan ' + money(P.L) + ' plus interest ' + money(P.interest));
+    ls += row('Interest cost per month', pct(P.i / P.n, 1));
+    ls += row('Price must rise to break even', spct(P.be), '', 'Whole plan, after interest and both fees. Fees alone need ' + spct(P.feeFloor) + '.');
+    ls += row('Each borrowed unit must earn', spct(P.hurdle), '', 'You need about ' + pct(Math.min(P.rawNeeded, 9.99), 0) + ' raw conviction to justify borrowing.');
+    ls += row('Loss if the stop-loss is hit', money(P.plStop), cls(P.plStop), 'At a ' + params.stop + '% fall, after fees and interest');
+    ls += row('Left owing beyond your own cash', money(P.leftOwing), P.leftOwing > 0 ? 'neg' : 'pos', P.ownLost == null ? 'No own cash put in' : 'Share of own cash lost at the stop: ' + pct(P.ownLost, 0));
+    ls += row('Loss if the stop fails', money(P.plStress), cls(P.plStress), 'At a ' + params.stress + '% fall');
+    ls += row('Expected result with the loan', money(P.expPL), cls(P.expPL));
+    ls += row('Expected result with own cash only', money(P.expOwnOnly), cls(P.expOwnOnly), 'No loan. Compare with the line above.');
+    ls += row('Largest loan your loss limit allows', money(P.Lmax));
+    $('ledger').innerHTML = ls;
+
+    var sc = '';
+    for (var j = 1; j <= P.n; j++) {
+      var cov = (j === 1) ? (P.cover >= 1 ? 'Buffer covers it' : 'Buffer covers ' + pct(P.cover, 0) + '. Sell about ' + money(P.firstSale) + ' of the holding.') : 'Paid from sales or what remains';
+      sc += row('Installment ' + j + ' of ' + P.n + ', day ' + (j * 30), money(P.inst), '', cov);
+    }
+    $('sched').innerHTML = sc;
+  }
+
+  /* ---------- price test ---------- */
+  var PRESETS = [-40, -30, -20, -10, 0, 10, 20, 30, 50];
+  function renderTest() {
+    var P = plan(params);
+    var m = mv / 100;
+    var mvVal = P.basis * (1 + m), proceeds = mvVal * (1 - P.sf), assets = proceeds + P.B, eq = assets - P.owed, pl = eq - P.O;
+    var st = pl >= 0 ? 'PROFIT' : (m <= -P.stop ? 'EXIT' : (m <= -P.watch ? 'WATCH' : 'HOLD'));
+    $('m-big').textContent = (mv > 0 ? '+' : (mv < 0 ? '−' : '')) + Math.abs(mv) + '%';
+    $('m-pill').innerHTML = statusPill(st);
+    $('m-chips').innerHTML = PRESETS.map(function (x) {
+      return '<button type="button" class="chip" data-m="' + x + '" aria-pressed="' + (x === mv) + '">' + (x > 0 ? '+' : (x < 0 ? '−' : '')) + Math.abs(x) + '%</button>';
+    }).join('');
+    $('m-ledger').innerHTML =
+      row('Market value of the holding', money(mvVal)) +
+      row('After the sell fee', money(proceeds)) +
+      row('Plus cash buffer', money(assets), '', 'Total assets at maturity') +
+      row('Owed at maturity', money(P.owed)) +
+      row('Net result', money(pl), cls(pl), pct(P.L > 0 ? pl / P.L : 0) + ' of the loan. Your own cash is already counted.') +
+      row('Cover ratio', (assets / P.owed).toFixed(2) + 'x', '', 'Assets divided by owed. Below 1.00x means you cannot repay in full.');
+    $('m-chart').innerHTML = chart(P, m);
+  }
+  $('m-slider').addEventListener('input', function () { mv = parseInt(this.value, 10) || 0; renderTest(); });
+  $('m-chips').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-m]');
+    if (!b) return;
+    mv = parseInt(b.getAttribute('data-m'), 10);
+    $('m-slider').value = mv;
+    renderTest();
+  });
+
+  function chart(P, mNow) {
+    var W = 360, H = 220, ml = 54, mr = 12, mt = 16, mb = 28;
+    var x0 = -50, x1 = 80;
+    var xs = [], ys = [];
+    for (var x = x0; x <= x1; x += 5) { xs.push(x); ys.push(P.plAt(x / 100)); }
+    var lo = Math.min.apply(null, ys.concat([0])), hi = Math.max.apply(null, ys.concat([0]));
+    var span = hi - lo || 1; lo -= span * 0.06; hi += span * 0.06;
+    var sx = function (v) { return ml + (v - x0) / (x1 - x0) * (W - ml - mr); };
+    var sy = function (v) { return mt + (hi - v) / (hi - lo) * (H - mt - mb); };
+    var pts = xs.map(function (v, i) { return sx(v).toFixed(1) + ',' + sy(ys[i]).toFixed(1); });
+    var line = 'M' + pts.join(' L');
+    var area = line + ' L' + sx(x1).toFixed(1) + ',' + sy(0).toFixed(1) + ' L' + sx(x0).toFixed(1) + ',' + sy(0).toFixed(1) + ' Z';
+    var z = sy(0);
+    var svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Net profit or loss at maturity for price changes from minus 50 to plus 80 percent">';
+    svg += '<defs><clipPath id="cl-up"><rect x="0" y="0" width="' + W + '" height="' + z.toFixed(1) + '"/></clipPath><clipPath id="cl-dn"><rect x="0" y="' + z.toFixed(1) + '" width="' + W + '" height="' + H + '"/></clipPath></defs>';
+    [-40, -20, 0, 20, 40, 60, 80].forEach(function (t) {
+      svg += '<line class="c-grid" x1="' + sx(t).toFixed(1) + '" x2="' + sx(t).toFixed(1) + '" y1="' + mt + '" y2="' + (H - mb) + '"/>';
+      svg += '<text x="' + sx(t).toFixed(1) + '" y="' + (H - 10) + '" text-anchor="middle">' + (t > 0 ? '+' : (t < 0 ? '−' : '')) + Math.abs(t) + '%</text>';
+    });
+    var yt = [Math.round(hi / 1000) * 1000, 0, Math.round(lo / 1000) * 1000];
+    yt.forEach(function (t) {
+      if (t !== 0 && (t > hi || t < lo)) return;
+      svg += '<text x="' + (ml - 6) + '" y="' + (sy(t) + 3).toFixed(1) + '" text-anchor="end">' + money(t) + '</text>';
+    });
+    svg += '<path class="c-up" d="' + area + '" clip-path="url(#cl-up)"/><path class="c-down" d="' + area + '" clip-path="url(#cl-dn)"/>';
+    svg += '<line class="c-zero" x1="' + ml + '" x2="' + (W - mr) + '" y1="' + z.toFixed(1) + '" y2="' + z.toFixed(1) + '"/>';
+    var stopX = -P.stop * 100;
+    if (stopX >= x0 && stopX <= x1) {
+      svg += '<line class="m-stop" x1="' + sx(stopX).toFixed(1) + '" x2="' + sx(stopX).toFixed(1) + '" y1="' + mt + '" y2="' + (H - mb) + '"/>';
+      svg += '<text class="t-stop" x="' + (sx(stopX) + 4).toFixed(1) + '" y="' + (mt + 9) + '">Stop</text>';
+    }
+    var beX = P.be * 100;
+    if (isFinite(beX) && beX >= x0 && beX <= x1) {
+      svg += '<line class="m-be" x1="' + sx(beX).toFixed(1) + '" x2="' + sx(beX).toFixed(1) + '" y1="' + mt + '" y2="' + (H - mb) + '"/>';
+      svg += '<text class="t-be" x="' + (sx(beX) - 4).toFixed(1) + '" y="' + (mt + 21) + '" text-anchor="end">Break-even ' + spct(P.be, 0) + '</text>';
+    }
+    svg += '<path class="c-line" d="' + line + '"/>';
+    var nowX = Math.max(x0, Math.min(x1, mNow * 100));
+    var nowY = P.plAt(nowX / 100);
+    svg += '<line class="m-now" x1="' + sx(nowX).toFixed(1) + '" x2="' + sx(nowX).toFixed(1) + '" y1="' + mt + '" y2="' + (H - mb) + '"/>';
+    svg += '<circle class="c-dot" cx="' + sx(nowX).toFixed(1) + '" cy="' + sy(nowY).toFixed(1) + '" r="5"/>';
+    svg += '</svg>';
+    return svg;
+  }
+
+  /* ---------- tracker ---------- */
+  function sortedEntries() {
+    return entries.slice().sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : (b.ts || 0) - (a.ts || 0)); });
+  }
+  function renderTrack() {
+    var P = plan(params);
+    var list = sortedEntries();
+    var latest = list[0];
+    var base = { date: params.start, value: P.basis, basis: P.basis, cash: P.B, paid: 0 };
+    var cur = latest || base;
+    var c = entryCalc(cur, P, params);
+    var label = latest ? 'Latest entry, ' + cur.date : 'Day 1 from your plan, ' + cur.date;
+    var h = '<div class="note" style="margin-bottom:10px">' + label + (latest ? '' : '. Log today to replace this.') + '</div>';
+    h += '<div style="margin-bottom:8px">' + statusPill(c.status) + '</div><div class="ledger">';
+    h += row('Net result if you sold and repaid today', money(c.pl), cls(c.pl), 'Cash plus sale proceeds after the fee, less what you still owe, less your own cash');
+    h += row('Price change since entry', spct(c.ret), cls(c.ret), 'Stop-loss at −' + params.stop + '%, watch at −' + params.watch + '%');
+    h += row('Price rise still needed to break even', spct(c.needed));
+    h += row('Still owed', money(c.owedRem), '', c.left + ' days left');
+    if (c.dueIn != null) {
+      h += row('Next installment', money(c.nextInst), '', 'Due in ' + Math.max(c.dueIn, 0) + ' days');
+      h += row('Sale needed to pay it', money(c.sale), c.sale > 0 && c.dueIn <= 7 ? 'amb' : '', c.sale > 0 ? 'Market value to sell, because cash does not cover it' : 'Cash covers it');
+    } else {
+      h += row('Installments', 'All paid');
+    }
+    h += row('Shortfall if you repay everything today', money(c.shortfall), c.shortfall > 0 ? 'neg' : 'pos');
+    h += '</div>';
+    $('t-status').innerHTML = h;
+
+    if (!list.length) {
+      $('t-list').innerHTML = '<div class="empty">No entries yet. Log the market value of what you hold and your cash each day. Each entry gets a status and is kept here.</div>';
+    } else {
+      $('t-list').innerHTML = '<div class="entries">' + list.map(function (e) {
+        var k = entryCalc(e, P, params);
+        return '<div class="entry"><div><b class="num">' + e.date + '</b> ' + statusPill(k.status) +
+          '<div class="meta num">Value ' + money(e.value) + ' · cash ' + money(e.cash) + ' · paid ' + (e.paid || 0) + ' · result <span class="' + cls(k.pl) + '">' + money(k.pl) + '</span> · ' + spct(k.ret) + '</div></div>' +
+          '<button type="button" class="btn ghost small" data-del="' + e.id + '">Remove</button></div>';
+      }).join('') + '</div>';
+    }
+    prefillForm(latest, P);
+  }
+  var formTouched = false;
+  function prefillForm(latest, P) {
+    if (formTouched) return;
+    var src = latest || { value: P.basis, basis: P.basis, cash: P.B, paid: 0 };
+    $('t-date').value = today();
+    $('t-value').value = Math.round(src.value);
+    $('t-basis').value = Math.round(src.basis);
+    $('t-cash').value = Math.round(src.cash);
+    $('t-paid').value = src.paid || 0;
+  }
+  ['t-date', 't-value', 't-basis', 't-cash', 't-paid'].forEach(function (id) {
+    $(id).addEventListener('input', function () { formTouched = true; });
+  });
+  $('t-add').addEventListener('click', function () {
+    var e = { date: $('t-date').value, value: parseFloat($('t-value').value) || 0, basis: parseFloat($('t-basis').value) || 0,
+      cash: parseFloat($('t-cash').value) || 0, paid: Math.max(0, Math.min(3, parseInt($('t-paid').value, 10) || 0)), ts: Date.now() };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date)) return;
+    formTouched = false;
+    if (dbRef) {
+      dbRef.collection('entries').add(e).catch(function () {});
+    } else {
+      e.id = String(Date.now());
+      entries.push(e); lsSet(); renderTrack();
+    }
+  });
+  var pendingDel = null;
+  $('t-list').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-del]');
+    if (!b) return;
+    var id = b.getAttribute('data-del');
+    if (pendingDel !== id) {
+      pendingDel = id; b.textContent = 'Tap again to remove';
+      setTimeout(function () { if (pendingDel === id) { pendingDel = null; if (b.isConnected) b.textContent = 'Remove'; } }, 3000);
+      return;
+    }
+    pendingDel = null;
+    if (dbRef) dbRef.collection('entries').doc(id).delete().catch(function () {});
+    else { entries = entries.filter(function (x) { return x.id !== id; }); lsSet(); renderTrack(); }
+  });
+
+  /* ---------- compare ---------- */
+  function renderCompare() {
+    var P = plan(params);
+    var t = '<table><thead><tr><th>Term</th><th>Interest per month</th><th>Each installment</th><th>First as % of loan</th><th>Buffer ÷ first</th><th>Sell at first</th><th>Break-even rise</th><th>Rise per month</th></tr></thead><tbody>';
+    [1, 2, 3].forEach(function (n) {
+      var r = termRow(n, params);
+      t += '<tr' + (n === params.months ? ' class="hl"' : '') + '><td>' + n + (n === 1 ? ' month' : ' months') + '</td><td>' + pct(r.perMonth) + '</td><td>' + money(r.inst) + '</td><td>' + pct(r.firstPct, 0) + '</td><td>' + r.cover.toFixed(2) + 'x</td><td>' + money(r.sale) + '</td><td>' + spct(r.be) + '</td><td>' + spct(r.bePerMonth) + '</td></tr>';
+    });
+    $('c-terms').innerHTML = t + '</tbody></table>';
+    var o = '<table><thead><tr><th>Own cash</th><th>Amount</th><th>Break-even rise</th><th>Loss at stop</th><th>Left owing</th><th>Own cash lost</th><th>Buffer ÷ first</th></tr></thead><tbody>';
+    var cur = P.L > 0 ? P.O / P.L : 0;
+    var rows = [0, 0.1, 0.25, 0.4, 0.5, 0.75, 1];
+    var hit = rows.some(function (x) { return Math.abs(x - cur) < 0.005; });
+    if (!hit) { rows.push(cur); rows.sort(function (a, b) { return a - b; }); }
+    rows.forEach(function (pc) {
+      var r = ownRow(pc, params);
+      o += '<tr' + (Math.abs(pc - cur) < 0.005 ? ' class="hl"' : '') + '><td>' + pct(pc, 0) + ' of loan</td><td>' + money(r.O) + '</td><td>' + spct(r.be) + '</td><td class="' + cls(r.plStop) + '">' + money(r.plStop) + '</td><td class="' + (r.left > 0 ? 'neg' : 'pos') + '">' + money(r.left) + '</td><td>' + (r.lost == null ? '–' : pct(r.lost, 0)) + '</td><td>' + r.cover.toFixed(2) + 'x</td></tr>';
+    });
+    $('c-own').innerHTML = o + '</tbody></table>';
+  }
+
+  /* ---------- shell ---------- */
+  function renderAll() {
+    renderPlan(); renderTest(); renderTrack(); renderCompare();
+  }
+  var TABS = ['plan', 'price-test', 'tracker', 'compare'];
+  function showTab(name) {
+    if (TABS.indexOf(name) < 0) name = 'plan';
+    tab = name;
+    TABS.forEach(function (t) { $('tab-' + t).hidden = t !== name; });
+    document.querySelectorAll('nav button').forEach(function (b) {
+      if (b.getAttribute('data-tab') === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+  }
+  document.querySelectorAll('nav button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var n = b.getAttribute('data-tab');
+      try { history.replaceState(null, '', '#' + n); } catch (e) { location.hash = n; }
+      showTab(n); window.scrollTo(0, 0);
+    });
+  });
+  window.addEventListener('hashchange', function () { showTab(location.hash.slice(1)); });
+
+  function setStorageNote() {
+    $('storage').textContent = dbRef ? 'Saved to your account, so it follows you across devices.' : 'Saved in this browser only.';
+  }
+
+  // boot
+  var saved = lsGet();
+  if (saved) {
+    if (saved.params) params = Object.assign({}, DEFAULTS, saved.params);
+    if (saved.entries) entries = saved.entries;
+  }
+  syncInputs(); showTab(location.hash.slice(1)); renderAll(); setStorageNote();
+
+  if (window.claude && window.claude.use) {
+    window.claude.use('db').then(function (db) {
+      if (!db) return;
+      dbRef = db; setStorageNote();
+      db.doc('app/settings').onSnapshot(function (snap) {
+        if (!snap.exists) { pushSettings(); return; }
+        var d = snap.data();
+        var merged = Object.assign({}, DEFAULTS, d);
+        if (JSON.stringify(merged) === JSON.stringify(params)) return;
+        if (snap.metadata && snap.metadata.hasPendingWrites) return;
+        params = merged; lsSet(); syncInputs(); renderAll();
+      }, function () {});
+      db.collection('entries').onSnapshot(function (snap) {
+        entries = snap.docs.map(function (d) { var o = Object.assign({}, d.data()); o.id = d.id; return o; });
+        renderTrack();
+      }, function () {});
+    }).catch(function () {});
+  }
+})();
+</script>
+
+</body></html>
