@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+loan_planner.sqlite3
+loan_planner.sqlite3-shm
+loan_planner.sqlite3-wal
